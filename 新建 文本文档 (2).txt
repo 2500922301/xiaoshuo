@@ -1,0 +1,1308 @@
+<template>
+  <list-layout>
+    <div slot="search">
+      <el-form v-show="showSearch" ref="queryForm" size="small" :model="queryParams" label-position="right"
+        :label-width="$store.state.app.language === 'zh' ? '120px' : '140px'">
+        <el-row :gutter="10">
+          <el-col :span="6">
+            <el-form-item :label="$t('failureAnalysis.failureModeLayer')" prop="structureIds">
+              <treeselect style="z-index: 9999;" :appendToBody="true"  v-model="queryParams.structureIds" :options="treeData" :loadOptions="loadFocusTree" multiple
+                :flat="true" :defaultExpandLevel="3" :placeholder="$t('tips.pleaseSelectInput')" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item class="mt46" :label="$t('failureAnalysis.failureEffect')" prop="failureEffect">
+              <el-select v-model="queryParams.failureEffect" :placeholder="$t('tips.pleaseSelectInput')" clearable>
+                <el-option v-for="item in feOptions" :key="item.id" :label="item.name" :value="item.id" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item :label="$t('failureAnalysis.failureReason')" prop="failureReason">
+              <el-select v-model="queryParams.failureReason" :placeholder="$t('tips.pleaseSelectInput')" clearable>
+                <el-option v-for="item in fcOptions" :key="item.id" :label="item.name" :value="item.id" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item :label="'AP'" prop="apList">
+              <el-select v-model="queryParams.apList" :placeholder="$t('tips.pleaseSelectInput')" multiple clearable>
+                <el-option v-for="(item, index) in APOptions" :key="index" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item :label="'S'" prop="sList">
+              <el-select v-model="queryParams.sList" :placeholder="$t('tips.pleaseSelectInput')" multiple clearable>
+                <el-option v-for="(item, index) in failureSeverityOptions" :key="index" :label="item.label"
+                  :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item :label="'O'" prop="oList">
+              <el-select v-model="queryParams.oList" :placeholder="$t('tips.pleaseSelectInput')" multiple clearable>
+                <el-option v-for="(item, index) in riskOccurrenceOptions" :key="index" :label="item.label"
+                  :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item :label="'D'" prop="dList">
+              <el-select v-model="queryParams.dList" :placeholder="$t('tips.pleaseSelectInput')" multiple clearable>
+                <el-option v-for="(item, index) in riskDetectionOptions" :key="index" :label="item.label"
+                  :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item :label="'RPN'">
+              <div style="display: flex;justify-content: space-around;">
+                <el-input type="number" v-model="queryParams.rpnLowerLimit"
+                  :placeholder="$t('tips.pleaseInput')"></el-input>
+                <span>—</span>
+                <el-input type="number" v-model="queryParams.rpnUpperLimit"
+                  :placeholder="$t('tips.pleaseInput')"></el-input>
+              </div>
+
+            </el-form-item>
+          </el-col>
+          <el-col :span="24" class="query-button">
+            <el-button type="primary" size="mini" icon="el-icon-search" @click="handleQuery">{{$t('fmeaDoc.dfmeaGrid.generateTable')}}</el-button>
+            <el-button icon="el-icon-refresh" size="mini" @click="resetQuery">{{$t('fmeaDoc.dfmeaGrid.restoreDefaultSettings')}}</el-button>
+          </el-col>
+        </el-row>
+
+      </el-form>
+    </div>
+    <div @click.stop="closeMenu" v-if="!$store.state.app.languageChange" class="app-container height-minus-twotab">
+      <el-row :gutter="10" class="mb8 action-btns">
+        <el-col :span="1.5">
+          <el-button v-hasPermi="['fmea:fmeatable:exportExcel']" v-if="hasExportFmeaGrid || isManagerUserId"
+            type="primary" icon="el-icon-download" size="mini" :loading="exportLoading" @click="handleExport">{{
+              $t('btn.exportExcel') }}
+          </el-button>
+        </el-col>
+        <el-col :span="1.5">
+          <el-button v-hasPermi="['fmea:fmeatable:exportPDF']" v-if="hasExportFmeaGrid || isManagerUserId"
+            type="primary" icon="el-icon-download" size="mini" :loading="exportLoading" @click="handleExportPDF">{{
+              $t('btn.exportPDF') }}
+          </el-button>
+        </el-col>
+        <!--
+        <el-col :span="1.5">
+          <el-button v-if="hasExportFmeaGrid || isManagerUserId" type="primary" icon="el-icon-download" size="mini"
+            :loading="exportLoading" @click="handleExportXML">{{ $t('btn.exportXML') }}
+          </el-button>
+        </el-col>
+        -->
+        <right-toolbar :show-search.sync="showSearch" @queryTable="refreshList" />
+      </el-row>
+      <el-table ref="fmeaTable" :key="'timeStamp'" v-loading="loading" :data="processedPostList" :cell-class-name="cellClassName"
+        :cell-style="{ borderColor: '#C0C0C0' }" :header-cell-style="headerCellStyle" :height="$store.state.app.isFold?'calc(100vh - 270px)':'calc(100vh - 405px)'"
+        :span-method="mergeRowMethod" class="outer-table" @sort-change="sortChange" @cell-contextmenu="rightClick"
+        @row-click="clickTableRow">
+        <el-table-column :label="$t('fmeaDoc.dfmeaGrid.structuralAnalysis')" align="center">
+          <!-- 上一级结构 -->
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.structureParent')" align="center" prop="structureParent"
+            width="180" sortable="custom" />
+          <!-- 关注要素 -->
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.structureFocus')" align="center" prop="structureFocus"
+            width="180" sortable="custom" />
+          <!-- 下一级结构 -->
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.structureChild')" align="center" prop="structureChild"
+            width="180" sortable="custom">
+          </el-table-column>
+        </el-table-column>
+        <el-table-column :label="$t('fmeaDoc.dfmeaGrid.functionAnalysis')" align="center">
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.functionParent')" align="center" prop="functionParent"
+            width="240" sortable="custom">
+            <template slot-scope="scope">
+              <div class="full-height-container">
+                <div class="list-group full-height">
+                  <div v-for="(item, index) in scope.row.functionParentList" :key="index" class="full-height-item">
+                    <a @contextmenu.stop="nodeClick(item, $event, 'functionParent')" class="full-height-link">
+                      {{ item.desc }}
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.functionFocus')" align="center" prop="functionFocus"
+            width="240" sortable="custom">
+            <template slot-scope="scope">
+              <a @contextmenu.stop="nodeClick(scope.row, $event, 'functionFocus')">
+                {{ scope.row.functionFocus }}
+              </a>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.functionChild')" align="center" prop="functionChild"
+            width="240" sortable="custom">
+            <template slot-scope="scope">
+                  <a @contextmenu.stop="nodeClick(scope.row, $event, 'functionChild')">
+                    {{ scope.row.functionChild }}
+                  </a>
+            </template>
+          </el-table-column>
+        </el-table-column>
+        <!-- 失效分析 -->
+        <el-table-column :label="$t('fmeaDoc.dfmeaGrid.failureAnalysis')" align="center">
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.failureEffect')" align="center" prop="failureEffect"
+            width="240" sortable="custom">
+            <template slot-scope="scope">
+              <div class="full-height-container">
+                <div class="list-group full-height">
+                  <div v-for="(item, index) in scope.row.failureEffectList" :key="index" class="full-height-item">
+                    <a @contextmenu.stop="nodeClick(item, $event, 'failureEffect')" class="full-height-link">
+                      {{ item.desc }}
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.failureSeverity')" align="center" prop="failureSeverity"
+            width="80" >
+            <template slot-scope="scope">
+              <div class="full-height-container">
+                <div class="list-group full-height">
+                  <div v-for="(item, index) in scope.row.failureEffectList" :key="index" class="full-height-item">
+                    <a class="full-height-link">
+                      {{ item.failureSeverity }}
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.failureMode')" align="center" prop="failureMode" width="200"
+            sortable="custom">
+            <template slot-scope="scope">
+              <a @contextmenu.stop="nodeClick(
+                {
+                  id: scope.row.failureModeId,
+                }, $event, 'failureMode')">
+                {{ scope.row.failureMode }}
+              </a>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.failureReason')" align="center" prop="failureReason"
+            width="200" sortable="custom">
+            <template slot-scope="scope">
+              <a @contextmenu.stop="nodeClick(
+                {
+                  id: scope.row.failureReasonId,
+                }, $event, 'failureMode')">
+                {{ scope.row.failureReason }}
+              </a>
+            </template>
+          </el-table-column>
+        </el-table-column>
+        <!-- 风险分析 -->
+        <el-table-column :label="$t('fmeaDoc.dfmeaGrid.riskAnalysis')" align="center">
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.riskPreventDesc')" align="center" prop="riskPreventDesc"
+            width="180">
+            <template slot-scope="scope">
+              <div class="full-height-container">
+                <ul class="list-group full-height">
+                  <li v-for="(item, index) in scope.row.riskPreventDescList" :key="index">
+                    <a @contextmenu.stop="nodeClick(item, $event, 'riskPreventDesc')" class="full-height-link">
+                      {{ item.desc }}
+                    </a>
+                  </li>
+                </ul>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.riskOccurrence')" align="center" prop="riskOccurrence"
+            width="80" />
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.riskDetectionDesc')" align="center" prop="riskDetectionDesc"
+            width="220">
+            <template slot-scope="scope">
+              <div class="full-height-container">
+                <div class="list-group full-height">
+                  <div v-for="(item, index) in scope.row.riskDetectionDescList" :key="index">
+                    <a @contextmenu.stop="nodeClick(item, $event, 'riskDetectionDesc')" class="full-height-link">
+                      {{ item.desc }}
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.riskDetection')" align="center" prop="riskDetection"
+            width="80" />
+          <el-table-column :label="'RPN'" align="center" prop="riskRpn" width="60" />
+          <el-table-column :label="'AP'" align="center" prop="riskAp" width="60" />
+        </el-table-column>
+        <!-- 优化标题 -->
+        <el-table-column :label="$t('fmeaDoc.dfmeaGrid.optimization')" align="center">
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.optPreventDesc')" align="center" prop="optPreventDesc"
+            width="180">
+            <template slot-scope="scope">
+              <div class="full-height-container">
+                <div class="list-group full-height">
+                  <div v-for="(item, index) in scope.row.optPreventDescList" :key="index" class="full-height-item">
+                    <a @contextmenu.stop="nodeClick(item, $event, 'optPreventDesc')" class="full-height-link">
+                      {{ item.desc }}
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.optOccurrence')" align="center" prop="optOccurrence"
+            width="80" />
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.optDetectionDesc')" align="center" prop="optDetectionDesc"
+            width="220">
+            <template slot-scope="scope">
+              <div class="full-height-container">
+                <div class="list-group full-height">
+                  <div v-for="(item, index) in scope.row.optDetectionDescList" :key="index" class="full-height-item">
+                    <a @contextmenu.stop="nodeClick(item, $event, 'optDetectionDesc')" class="full-height-link">
+                      {{ item.desc }}
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('fmeaDoc.dfmeaGrid.optDetection')" align="center" prop="optDetection"
+            width="80" />
+          <el-table-column :label="'RPN'" align="center" prop="optRpn" width="60" />
+          <el-table-column :label="'AP'" align="center" prop="optAp" width="60" />
+        </el-table-column>
+      </el-table>
+      <!-- 右键菜单 -->
+      <div id="menu" class="menuDiv">
+        <ul class="menuUl" v-if="type">
+          <!-- 聚焦 -->
+          <li v-if="type == 'focus'" @click.stop="infoClick">{{ $t('fmeaDoc.index.toStructure') }}</li>
+          <li v-if="type == 'edit'" @click.stop="editClick">{{ $t('btn.edit') }}</li>
+
+        </ul>
+        <ul class="menuUl" v-else>
+          <!-- 聚焦 -->
+          <li @click.stop="infoDivClick">{{ $t('fmeaDoc.index.toStructure') }}</li>
+          <li @click.stop="editClick">{{ $t('btn.edit') }}</li>
+
+        </ul>
+      </div>
+    </div>
+    <!-- 添加特性/编辑特性 弹框 -->
+    <add-character-dialog :visible.sync="addCharacterVisible" :params="params" @save-success="getList" />
+    <!-- 添加功能/编辑功能 弹框 -->
+    <add-function-dialog :visible.sync="addFunctionVisible" :params="params" @save-success="getList" />
+    <!-- 添加/编辑失效弹框  -->
+    <add-failure-dialog :visible.sync="addFailureVisible" :params="params" @save-success="getList" />
+    <!-- 新增预防措施/新增探测措施 编辑预防措施/编辑探测措施-->
+    <AddMeasure :visible.sync="addMeasureVisible" :params="params" @save-success="getList" />
+
+  </list-layout>
+</template>
+
+<script>
+import { getProjCusList } from '@/api/fmea/common/project'
+import { queryDFmeaTable } from '@/api/fmea/common/fmeaGrid'
+import { queryFocusElement } from '@/api/fmea/common/structure'
+import Toolbar from '@/views/dfmea/project/compile/components/MainMinderTree/Toolbar'
+import { getStructureTree, failureModeStructureApi } from '@/api/fmea/common/structureTree'
+import { getFunctionInfo } from "@/api/fmea/common/function"
+import { getFailure } from "@/api/fmea/common/failure"
+import { getMeasure } from "@/api/fmea/common/measure"
+import AddMeasure from "@/views/dfmea/project/compile/components/AddMeasure"
+import { AddFunctionDialog, AddCharacterDialog } from '@/views/dfmea/project/compile/FunctionAnalysis/components'
+import { AddFailureDialog } from '@/views/dfmea/project/compile/FailureAnalysis/components'
+export default {
+  name: 'Task',
+  dicts: ['sys_normal_disable', 'symbol_classify', 'optimization_status'],
+  directives: {
+    lm: {
+      bind(el, binding) {
+        const selectWrap = el.querySelector('.el-table__body-wrapper')
+        selectWrap.addEventListener('scroll', function () {
+          const scrollDistance =
+            this.scrollHeight - this.scrollTop - this.clientHeight
+          if (scrollDistance <= 2) {
+            binding.value()
+          }
+        })
+      }
+    }
+  },
+  components: { Toolbar, AddCharacterDialog, AddFunctionDialog, AddFailureDialog, AddMeasure },
+  data() {
+    return {
+      spanArr: {},
+      // 遮罩层
+      loading: false,
+      // AP
+      apList: this.$store.state.fmea.apList,
+      focusElementIds: [],
+      // 导出遮罩层
+      exportLoading: false,
+      exportPdfLoading: false,
+      // 显示搜索条件
+      showSearch: true,
+      // 总条数
+      total: 0,
+      // 表格数据
+      postList: [],
+      // 客户选项
+      customerOpts: [],
+      focusElements: [],
+      // 查询参数
+      queryParams: {
+        projectId: this.$route.params.projectId,
+
+        structureIds: undefined,
+        failureEffect: '0',
+        failureReason: '0',
+        apList: undefined,
+        sList: undefined,
+        oList: undefined,
+        dList: undefined,
+        // sList:['1','2','3','4','5','6','7','8','9','10'],
+        // oList:['1','2','3','4','5','6','7','8','9','10'],
+        // dList:['1','2','3','4','5','6','7','8','9','10'],
+        // measureStatusList:undefined,
+        rpnLowerLimit: undefined,
+        rpnUpperLimit: undefined,
+        statisticsStatus: null,
+
+      },
+      lmFlag: false,
+      apOpts: ['H', 'M', 'L'],
+      fmOptions: [
+        { id: '0', name: '分油盘总成' },
+        { id: '1', name: 'XXX总成' },
+        { id: '2', name: 'XX件' },
+        { id: '3', name: 'XXXX零件' }
+      ],
+      feOptions: [
+        { id: '0', name: '顶层失效后果' },
+        { id: '1', name: '相邻层失效后果' }
+      ],
+      fcOptions: [
+        { id: '0', name: '根本失效原因' },
+        { id: '1', name: '相邻层失效原因' }
+      ],
+      ParentList: [
+        { id: '0', desc: '分油盘总成' },
+        { id: '1', desc: 'XXX总成' },
+        { id: '2', desc: 'XX件' },
+        { id: '3', desc: 'XXXX零件' }
+      ],
+      treeData: null,
+      APOptions: [
+        { label: 'H', value: 'H' },
+        { label: 'M', value: 'M' },
+        { label: 'L', value: 'L' }
+      ],
+      failureSeverityOptions: [
+        { label: '1', value: '1' },
+        { label: '2', value: '2' },
+        { label: '3', value: '3' },
+        { label: '4', value: '4' },
+        { label: '5', value: '5' },
+        { label: '6', value: '6' },
+        { label: '7', value: '7' },
+        { label: '8', value: '8' },
+        { label: '9', value: '9' },
+        { label: '10', value: '10' },
+      ],
+      riskOccurrenceOptions: [
+        { label: '1', value: '1' },
+        { label: '2', value: '2' },
+        { label: '3', value: '3' },
+        { label: '4', value: '4' },
+        { label: '5', value: '5' },
+        { label: '6', value: '6' },
+        { label: '7', value: '7' },
+        { label: '8', value: '8' },
+        { label: '9', value: '9' },
+        { label: '10', value: '10' },
+      ],
+      riskDetectionOptions: [
+        { label: '1', value: '1' },
+        { label: '2', value: '2' },
+        { label: '3', value: '3' },
+        { label: '4', value: '4' },
+        { label: '5', value: '5' },
+        { label: '6', value: '6' },
+        { label: '7', value: '7' },
+        { label: '8', value: '8' },
+        { label: '9', value: '9' },
+        { label: '10', value: '10' },
+      ],
+      clickRow: null,
+      clickColumn: null,
+      showMenus: null,
+      nodeType: this.$store.state.fmea.nodeType,
+      knowledgeType: this.$store.state.fmea.knowledgeType,
+      characterTypes: this.$store.state.fmea.characterTypes,
+      fmeaAnalysis: this.$store.state.fmea.fmeaAnalysis,
+      addCharacterVisible: false,
+      addFunctionVisible: false,
+      addFailureVisible: false,
+      addMeasureVisible: false,
+      params: {},
+      type: 'focus',
+      editRow: null,
+      property: null,
+      clickDivRow: null
+    }
+  },
+  computed: {
+    sortOpts() {
+      return [
+        { value: 'structureParent', text: this.$t('fmeaDoc.dfmeaGrid.structureParent') },
+        { value: 'structureFocus', text: this.$t('fmeaDoc.dfmeaGrid.structureFocus') },
+        { value: 'structureChild', text: this.$t('fmeaDoc.dfmeaGrid.structureChild') },
+        { value: 'functionParent', text: this.$t('fmeaDoc.dfmeaGrid.functionParent') },
+        { value: 'functionFocus', text: this.$t('fmeaDoc.dfmeaGrid.functionFocus') },
+        { value: 'functionChild', text: this.$t('fmeaDoc.dfmeaGrid.functionChild') }
+      ]
+    },
+    hasExportFmeaGrid() {
+      return this.$auth.hasPermi('fmea:commonProject:exportFmeaGrid')
+    },
+    isManagerUserId() {
+      const pre = this.$store.state.fmea.projectPermissions[this.$route.params.projectId] || { isManagerUserId: false }
+      return pre.isManagerUserId
+    },
+    // 处理后的数据（包含合并后的数组）
+    processedPostList() {
+      if (!this.postList || this.postList.length === 0) {
+        this._spanArr = {}; // 数据为空时重置
+        return [];
+      }
+      // 深拷贝数据
+      const data = JSON.parse(JSON.stringify(this.postList));
+      // 合并配置
+      const mergeConfig = {
+        'structureParent': 'structureParentId',
+        'structureFocus': 'structureFocusId',
+        'structureChild': 'structureChildId',
+        'functionParent': 'functionParentId',
+        'functionFocus': 'functionFocusId',
+        'functionChild': 'functionChildId',
+        'failureEffect': 'failureEffectId',
+        'failureSeverity': 'failureSeverity',
+        'failureMode': 'failureModeId',
+        'failureReason': 'failureReasonId',
+        'riskPreventDesc': 'riskStatusId',
+        'riskOccurrence': 'riskStatusId',
+        'riskDetectionDesc': 'riskStatusId',
+        'riskDetection': 'riskStatusId',
+        'riskRpn': 'riskStatusId',
+        'riskAp': 'riskStatusId',
+        'optAp': 'optRiskStatusId',
+        'optDetection': 'optRiskStatusId',
+        'optDetectionDesc': 'optRiskStatusId',
+        'optOccurrence': 'optRiskStatusId',
+        'optPreventDesc': 'optRiskStatusId',
+        'optRpn': 'optRiskStatusId'
+      };
+      // 需要合并的数组字段
+      const arrayFields = [
+        'optPreventDescList', 
+        'riskDetectionDescList', 
+        'riskPreventDescList', 
+        'optDetectionDescList', 
+      ];
+      // 初始化 spanArr
+      const spanArr = {};
+      Object.keys(mergeConfig).forEach(prop => {
+        spanArr[prop] = [];
+      });
+      // 计算合并规则并合并数组
+      Object.keys(mergeConfig).forEach(prop => {
+        const idField = mergeConfig[prop];
+        let pos = 0;
+        data.forEach((item, index) => {
+          if (index === 0) {
+            spanArr[prop].push(1);
+            pos = 0;
+          } else {
+            const currentItem = data[index];
+            const prevItem = data[index - 1];
+            // 判断是否应该合并
+            const isValueSame = (currentItem[prop] === prevItem[prop]) || (!currentItem[prop] && !prevItem[prop]);
+            // 获取当前和上一个的ID值
+            const currentId = currentItem[idField];
+            const prevId = prevItem[idField];
+            let isIdSame = false;
+              // 如果idField是 riskStatusId 或 optRiskStatusId，且值为空，则使用 failureReasonId
+            if ((idField === 'riskStatusId' || idField === 'optRiskStatusId') && 
+                (!currentId || !prevId)) {
+              // 使用 failureReasonId 作为辅助判断
+              const currentReasonId = currentItem.failureReasonId;
+              const prevReasonId = prevItem.failureReasonId;
+              isIdSame = (currentReasonId === prevReasonId)||(!currentReasonId && !prevReasonId);
+            } else {
+              // 正常判断
+              isIdSame = (currentId === prevId)||(!currentId && !prevId);
+            }
+            const isKeySame = currentItem.mergeKey === prevItem.mergeKey;
+            if (isValueSame && isIdSame && isKeySame) {
+              if (idField === 'optDetectionDesc' || idField === 'optPreventDesc' ||idField === 'riskDetectionDesc' || idField === 'riskPreventDesc'){
+                // 合并数组字段到起始行
+                arrayFields.forEach(field => {
+                  if (currentItem[field] && Array.isArray(currentItem[field]) && currentItem[field].length > 0) {
+                    if (!data[pos][field]) {
+                      data[pos][field] = [];
+                    }
+                    // 去重合并（根据id或desc）
+                    const existingKeys = new Set(
+                      data[pos][field].map(item => item.id || item.desc)
+                    );
+                    currentItem[field].forEach(arrItem => {
+                      const key = arrItem.id || arrItem.desc;
+                      if (!existingKeys.has(key)) {
+                        data[pos][field].push(arrItem);
+                        existingKeys.add(key);
+                      }
+                    });
+                  }
+                });
+              }
+              spanArr[prop][pos] += 1;
+              spanArr[prop].push(0);
+            } else {
+              spanArr[prop].push(1);
+              pos = index;
+            }
+          }
+        });
+      });
+      // 存储合并规则供 mergeRowMethod 使用
+      this._spanArr = spanArr;
+      return data;
+    }
+  },
+  created() {
+    this.fetchStructureData().then(() => {
+      this.getList();
+    });
+  },
+  mounted() {
+  },
+  methods: {
+
+    headerCellStyle({ column }) {
+      const style = {};
+      const prop = column.property;
+
+      // 关注要素 || 关注要素的功能特性 || 失效模式(FM)
+      if (prop === 'structureFocus' || prop === 'functionFocus' || prop === 'failureMode') {
+        style.backgroundColor = '#D0E0FA !important';
+      }
+      // 下一级结构 || 下一级结构的功能特性 || 失效原因(FC)
+      else if (prop === 'structureChild' || prop === 'functionChild' || prop === 'failureReason') {
+        style.backgroundColor = '#9E8AC5 !important';
+      }
+      // 严重度 || 预防措施(PC) || 发生度(O) || 探测措施(DC) || 探测度(D) || RPN ||AP
+      else if (prop === 'failureSeverity' || prop === 'riskPreventDesc' || prop === 'riskOccurrence' ||
+        prop === 'riskDetectionDesc' || prop === 'riskDetection' || prop === 'riskRpn' || prop === 'riskAp' ||
+        prop === 'optPreventDesc' || prop === 'optOccurrence' || prop === 'optDetectionDesc' ||
+        prop === 'optDetection' || prop === 'optRpn' || prop === 'optAp') {
+        style.backgroundColor = '#B5CA6F !important';
+      }
+      style.borderColor = '#C0C0C0'
+      return style;
+    },
+    nodeClick(row, event, property) {
+      this.type = 'edit'
+      this.editRow = row
+      this.property = property
+      if (property === 'riskPreventDesc' || property === 'riskDetectionDesc' || property === 'optPreventDesc' || property === 'optDetectionDesc') {
+        this.type = null
+        this.clickDivRow = row
+      }
+      event.preventDefault(); //阻止浏览器的默认行为
+      this.showMenu(event)
+    },
+
+    editClick() {
+      const { id, nodeType } = this.editRow;
+      switch (this.property) {
+        // 功能分析
+        case 'functionParent':
+        case 'functionFocus':
+        case 'functionChild':
+          this.editFunAndFeature(id, nodeType);
+          break;
+        // 失效分析
+        case 'failureEffect':
+        case 'failureMode':
+        case 'failureReason':
+          this.editFailure(id);
+          break;
+        // 风险分析（预防/探测措施）
+        case 'riskPreventDesc':
+        case 'riskDetectionDesc':
+          this.editMeasure(id, nodeType);
+          break;
+        // 优化措施（预防/探测措施）
+        case 'optPreventDesc':
+        case 'optDetectionDesc':
+          this.editMeasure(id, nodeType, 21);
+          break;
+      }
+      this.closeMenu();
+    },
+    editMeasure(extraId, nodeType, parentNodeType) {
+      getMeasure(extraId).then(res => {
+        const { remark, description, structureId } = res.data;
+        this.params = {
+          measureType: nodeType.toString(), // 18: 预防措施 19: 探测措施
+          isEdit: true,
+          title: nodeType == 18 ? '编辑预防措施' : '编辑探测措施',
+          id: extraId,
+          projectId: this.projectId,
+          structureId,
+          nodeType,
+          parentNodeType,
+          tableData: [
+            {
+              id: extraId,
+              name: description,
+              remark,
+              optRespName: parentNodeType === 21 ? res.data?.optRespName : undefined,
+              optPlanDate: parentNodeType === 21 ? res.data?.optPlanDate : undefined,
+              optRespId: parentNodeType === 21 ? res.data?.optRespId : undefined,
+              measureStatus: res.data?.measureStatus
+            }
+          ]
+        }
+        this.addMeasureVisible = true;
+      }).catch(() => { })
+    },
+    editFailure(extraId) {
+      getFailure(extraId).then(res => {
+        const { remark, description, scoreNumber, knowledgeId } = res.data;
+        this.params = {
+          isEdit: true,
+          title: '编辑失效',
+          id: extraId,
+          projectId: this.projectId,
+          nodeType: this.nodeType.failure.value,
+          scoreNumber,
+          tableData: [
+            {
+              id: extraId,
+              name: description,
+              projectId: this.projectId,
+              remark,
+              nodeType: this.nodeType.failure.value,
+              scoreNumber,
+              knowledgeId,
+            }
+          ]
+        }
+        this.addFailureVisible = true;
+      }).catch(() => { })
+    },
+    editFunAndFeature(extraId, nodeType) {
+      getFunctionInfo(extraId).then(res => {
+        const { remark, standardName, description } = res.data;
+        this.params = {
+          isEdit: true,
+          title: nodeType === 12 ? '编辑功能' : '编辑要求特性',
+          id: extraId,
+          projectId: this.projectId,
+          nodeType: nodeType === 12 ? this.nodeType.function.value : this.nodeType.character.value,
+          description,
+          tableData: [
+            {
+              id: extraId,
+              name: description,
+              remark,
+              standardName,
+            }
+          ]
+        }
+        if (nodeType === 12) {
+          this.addFunctionVisible = true;
+        } else if (nodeType === 13) {
+          this.addCharacterVisible = true;
+        }
+
+      }).catch(() => { })
+    },
+    rightClick(row, column, cell, event) {
+      let showMenus = ['structureParent', 'structureFocus', 'structureChild', 'functionParent', 'functionFocus', 'functionChild', 'failureEffect', 'failureMode', 'failureReason', 'riskOccurrence', 'riskDetectionDesc']
+      if (showMenus.includes(column.property)) {
+        this.clickRow = row
+        this.clickColumn = column
+        this.type = 'focus'
+        this.showMenu(event)
+      } else {
+        this.closeMenu()
+      }
+
+
+    },
+    showMenu(event) {
+      const menu = document.querySelector("#menu");
+      event.preventDefault(); //阻止浏览器的默认行为
+      // 确保菜单已渲染但隐藏，以便获取尺寸
+      menu.style.display = 'block';
+      menu.style.visibility = 'hidden';
+      // 获取菜单和窗口尺寸
+      const menuRect = menu.getBoundingClientRect();
+      const menuWidth = menuRect.width;
+      const menuHeight = menuRect.height;
+      const windowWidth = window.innerWidth;
+      const windowHeight = window.innerHeight;
+      // 计算理想位置
+      let left = event.clientX;
+      let top = event.clientY;
+      // 调整水平位置防止超出右边界
+      if (left + menuWidth > windowWidth) {
+        left = windowWidth - menuWidth - 5; // 留5px边距
+      }
+      // 调整垂直位置防止超出下边界
+      if (top + menuHeight > windowHeight) {
+        top = windowHeight - menuHeight - 5; // 留5px边距
+      }
+      // 确保位置不小于0
+      left = Math.max(5, left);
+      top = Math.max(5, top);
+      // 应用最终位置
+      menu.style.left = `${left}px`;
+      menu.style.top = `${top}px`;
+      menu.style.display = 'block';
+      menu.style.visibility = 'visible';
+      menu.style.zIndex = '9999';
+
+    },
+    rightInnerClick(row, column, cell, event) {
+      let showMenus = ['optPreventDesc', 'optOccurrence', 'optDetectionDesc', 'optDetection']
+      if (showMenus.includes(column.property)) {
+        this.clickRow = row
+        this.clickColumn = column
+        this.type = 'focus'
+        this.showMenu(event)
+      } else {
+        this.closeMenu()
+      }
+    },
+    infoClick(index) {
+      this.focusClick()
+      this.closeMenu()
+    },
+    infoDivClick() {
+      this.focusRowClick()
+      this.closeMenu()
+    },
+    focusRowClick() {
+      const extraId = this.clickDivRow.structureId
+      const treeId = this.clickDivRow.id
+      this.setProjectFocusId(this.$route.params.projectId, extraId)
+      this.setRightTreeFocusId(this.$route.params.projectId, treeId)
+      this.$emit('tabClick')
+
+    },
+    focusClick() {
+      const column = this.clickColumn
+      const row = this.clickRow
+      let extraId
+      let treeId
+      switch (column.property) {
+        case 'structureParent':  //上一级结构
+          extraId = row.structureParentId
+          break;
+        case 'structureFocus': //关注要素
+          extraId = row.structureFocusId
+          break;
+        case 'structureChild': //下一级结构
+          extraId = row.structureChildId
+          break;
+        /* 功能分析 */
+        case 'functionParent': //上一级结构的功能特性
+          if (row.functionParentList && Array.isArray(row.functionParentList)) {
+            treeId = row.functionParentList[0].id
+          }
+          extraId = row.structureParentId
+          break;
+        case 'functionFocus': //关注要素的功能特性
+          treeId = row.functionFocusId
+          extraId = row.structureFocusId
+          break;
+        case 'functionChild': //下一级结构的功能特性
+          treeId = row.functionChildId
+          extraId = row.structureChildId
+          break;
+        /* 失效分析 */
+        case 'failureEffect'://失效影响(FE)
+          if (row.failureEffectList && Array.isArray(row.failureEffectList)) {
+            treeId = row.failureEffectList[0].id
+          }
+          extraId = row.structureParentId
+          break;
+        case 'failureMode'://失效模式(FM)
+          treeId = row.failureModeId
+          extraId = row.structureFocusId
+          break;
+        case 'failureReason'://失效原因(FC)
+          treeId = row.failureReasonId
+          extraId = row.structureChildId
+          break;
+        /* 风险分析 */
+        case 'riskPreventDesc'://预防措施(PC)
+          treeId = row.riskStatusId
+          extraId = row.structureChildId
+          break;
+        case 'riskOccurrence'://发生度(O)
+          treeId = row.riskStatusId
+          extraId = row.structureChildId
+          break;
+        case 'riskDetectionDesc'://探测措施(DC)
+          treeId = row.riskStatusId
+          extraId = row.structureChildId
+          break;
+        case 'optPreventDesc'://预防措施(PC)
+          treeId = row.optRiskStatusId
+          extraId = row.structureChildId
+          break;
+        case 'optOccurrence'://发生度(O)
+          treeId = row.optRiskStatusId
+          extraId = row.structureChildId
+          break;
+        case 'optDetectionDesc'://探测措施(DC)
+          treeId = row.optRiskStatusId
+          extraId = row.structureChildId
+          break;
+        case 'optDetection'://探测度(D)
+          treeId = row.optRiskStatusId
+          extraId = row.structureChildId
+          break;
+
+      }
+      this.setProjectFocusId(this.$route.params.projectId, extraId)
+      this.setRightTreeFocusId(this.$route.params.projectId, treeId)
+      this.$emit('tabClick')
+
+    },
+    closeMenu() {
+      let menu = document.querySelector("#menu");
+      menu.style.display = "none";
+      this.clickRow = null
+      this.clickColumn = null
+      this.type = 'focus'
+    },
+    // table的左键点击当前行事件
+    clickTableRow(row, column, event) {
+      this.closeMenu()
+    },
+    //嵌套table的左键点击当前行事件
+    clickInnerTableRow() {
+      this.closeMenu()
+    },
+    fetchStructureData() {
+      return failureModeStructureApi({ projectId: this.$route.params.projectId })
+        .then(res => {
+          this.queryParams.structureIds = res.data || undefined;
+        });
+    },
+    // 加载聚焦节点树
+    loadFocusTree({ callback }) {
+      getStructureTree({ projectId: this.$route.params.projectId }).then(res => {
+        this.treeData = [res.data]
+        callback();
+      })
+    },
+    getDataFocus(data) {
+      this.$emit('getDataFocus', data);
+    },
+    queryFocusElement() {
+      queryFocusElement(this.queryParams).then(response => {
+        this.focusElements = response.data
+      })
+    },
+    sortChange(column) {
+      this.queryParams.params.customSort = []
+      let originIndex = ''
+      if (this.queryParams.params.orderName.length) {
+        this.queryParams.params.orderName.some((res, i) => {
+          if (res === column.prop) { originIndex = i }
+        })
+      }
+      if (column.order) {
+        if (column.order === 'ascending') {
+          this.queryParams.params.orderType.push('asc')
+        } else if (column.order === 'descending') {
+          this.queryParams.params.orderType.push('desc')
+        }
+        this.queryParams.params.orderName.push(column.prop)
+      }
+      if (typeof originIndex === 'number') {
+        this.queryParams.params.orderName.splice(originIndex, 1)
+        this.queryParams.params.orderType.splice(originIndex, 1)
+      }
+      this.getList()
+    },
+    /** 查询列表 */
+    getList() {
+      // this.loading = true
+      let params = JSON.parse(JSON.stringify(this.queryParams))
+      params.apList = params.apList ? params.apList.join(',') : ''
+      params.measureStatusList = params.measureStatusList ? params.measureStatusList.join(',') : ''
+      params.structureIds = params.structureIds ? params.structureIds.join(',') : ''
+      params.sList = params.sList ? params.sList.join(',') : ''
+      params.oList = params.oList ? params.oList.join(',') : ''
+      params.dList = params.dList ? params.dList.join(',') : ''
+      queryDFmeaTable(params).then(response => {
+        const uniqueRows = response.rows.filter((item, index, self) =>
+          index === self.findIndex(t => 
+            t.mergeKey === item.mergeKey && t.failureReasonId === item.failureReasonId && t.optRiskStatusId === item.optRiskStatusId
+          )
+        );
+        this.postList = uniqueRows
+        this.total = response.total
+        this.loading = false
+        this.$nextTick(() => {
+          this.lmFlag = true
+        })
+      })
+
+    },
+    loadMore() {
+      if (this.lmFlag && this.total > this.postList.length) {
+        this.lmFlag = false
+        // this.queryParams.pageNum += 1
+        this.loading = true
+        queryDFmeaTable(this.queryParams).then(response => {
+          this.postList = this.postList.concat(response.rows)
+          this.loading = false
+          this.$nextTick(() => {
+            this.lmFlag = true
+          })
+        })
+      }
+    },
+    /** 查询客户选项  */
+    getCustomerOpt() {
+      getProjCusList(this.$route.params.projectId).then(res => {
+        this.customerOpts = res.data
+      })
+    },
+    cellClassName({ row, column }) {
+      let value
+      if (column.property === 'optAp') {
+        value = row.optAp
+        return value ? this.apList[value].class : ''
+      } else if (column.property === 'riskAp') {
+        value = row.riskAp
+        return value ? this.apList[value].class : ''
+      } else if (column.property === 'riskRpn' && row.riskRpn) {
+        if (!row.failureSeverity) return ''
+
+        if (row.failureSeverity >= this.$store.state.fmea.rpnRule.s || row.riskRpn >= this.$store.state.fmea.rpnRule.rpn) {
+          return this.apList['H'].class
+        } else {
+          return this.apList['L'].class
+        }
+      } else if (column.property === 'optRpn' && row.optRpn) {
+        if (!row.failureSeverity) return ''
+        if (row.failureSeverity >= this.$store.state.fmea.rpnRule.s || row.riskRpn >= this.$store.state.fmea.rpnRule.rpn) {
+          return this.apList['H'].class
+        } else {
+          return this.apList['L'].class
+        }
+      }
+    },
+    cellClassName1({ row, column }) {
+      let value
+      if (column.property === 'optRpn' && row.optRpn) {
+        if (row.failureSeverity >= this.$store.state.fmea.rpnRule.s || row.optRpn >= this.$store.state.fmea.rpnRule.rpn) {
+          return this.apList['H'].class
+        } else {
+          return this.apList['L'].class
+        }
+      } else if (column.property === 'optAp' && row.optAp) {
+        value = row.optAp
+        return value ? this.apList[value].class : ''
+      }
+    },
+    mergeRowMethod({ row, column, rowIndex, columnIndex }) {
+      const prop = column.property;
+      if (this._spanArr && this._spanArr[prop]) {
+        const rowspan = this._spanArr[prop][rowIndex];
+        const colspan = rowspan > 0 ? 1 : 0;
+        return { rowspan, colspan };
+      }
+      return { rowspan: 1, colspan: 1 };
+    },
+    mergeRowMethod1({ row, _rowIndex, column, visibleData }) {
+      let rowspan = 1
+      switch (column.property) {
+        case 'structureParent':
+          if (row.structureParent) {
+            rowspan = row.structureParentCount
+          }
+          break
+        case 'structureFocus':
+          if (row.structureFocus) {
+            rowspan = row.structureFocusCount
+          }
+          break
+        case 'structureChild':
+          if (row.structureChild) {
+            rowspan = row.structureChildCount
+          }
+          break
+        case 'functionParent':
+          if (row.functionParent) {
+            rowspan = row.functionParentCount
+          }
+          break
+        case 'functionFocus':
+          if (row.functionFocus) {
+            rowspan = row.functionFocusCount
+          }
+          break
+        case 'functionChild':
+          if (row.functionChild) {
+            rowspan = row.functionChildCount
+          }
+          break
+      }
+
+      if (rowspan !== 1) {
+        return {
+          rowspan: rowspan, colspan: 1
+        }
+      }
+
+    },
+    /** 搜索按钮操作 */
+    handleQuery() {
+      this.postList = []
+      // this.queryParams.params.focusElementIds = this.focusElementIds.join(',')
+      this.queryParams.statisticsStatus = 1
+      this.refreshList()
+    },
+    /** 重置按钮操作 */
+    resetQuery() {
+      this.postList = []
+      this.$refs.queryForm.resetFields()
+      this.queryParams.structureIds = null
+      this.queryParams.rpnLowerLimit = undefined
+      this.queryParams.rpnUpperLimit = undefined
+      this.queryParams.statisticsStatus = null
+      this.fetchStructureData().then(() => {
+        this.getList();
+      });
+      this.focusElementIds = []
+    },
+    refreshList() {
+      this.lmFlag = false
+      // this.queryParams.pageNum = 1
+      // this.queryParams.pageSize = 20
+      // this.$refs.fmeaTable.clearSort()
+      this.getList()
+
+      console.log('queryParams', this.queryParams)
+    },
+    /** 导出按钮操作 */
+    handleExport() {
+      this.$modal.confirm(this.$t('modal.isSureExport')).then(() => {
+        this.download('/fmea/common/project/exportFmeaGridFile', {
+          ...this.queryParams
+        }, `dfmea_grid_V5_${new Date().getTime()}.xlsx`)
+      })
+    },
+    handleExportPDF() {
+      this.$modal.confirm(this.$t('modal.isSureExport')).then(() => {
+        this.download('/fmea/common/project/exportFmeaGridFile', {
+          ...this.queryParams
+        }, `dfmea_grid_V5_${new Date().getTime()}.xlsx`)
+      })
+    },
+    handleExportXML() {
+      this.$modal.confirm(this.$t('modal.isSureExport')).then(() => {
+        this.download('/fmea/common/project/exportFmeaGridFile', {
+          ...this.queryParams
+        }, `dfmea_grid_V5_${new Date().getTime()}.xlsx`)
+      })
+    },
+    riskRpn(row) {
+      return;
+      if (row.failureSeverity && row.riskOccurrence && row.riskDetection) {
+        return row.failureSeverity * row.riskOccurrence * row.riskDetection
+      }
+    },
+    optRpn(row) {
+      return;
+      if (row.failureSeverity && row.optOccurrence && row.optDetection) {
+        return row.failureSeverity * row.optOccurrence * row.optDetection
+      }
+    }
+  }
+}
+</script>
+<style lang="scss" scoped>
+::v-deep .el-table--scrollable-x .el-table__body-wrapper {
+  overflow: auto;
+}
+
+::v-deep .el-loading-mask {
+  background: rgba(255, 255, 255, 0.4)
+}
+
+::v-deep .vue-treeselect .vue-treeselect__control {
+  background-color: #EDF2FA;
+}
+
+::v-deep .vue-treeselect__single-value {
+  color: #606266;
+}
+
+::v-deep .vue-treeselect--has-value .vue-treeselect__input {
+  vertical-align: middle;
+}
+
+::v-deep .outer-table {
+  border: solid 1px #c0c0c0;
+
+  .el-table {
+    border: none;
+  }
+
+  .el-table__body-wrapper .el-table__cell {
+    padding: 0;
+  }
+}
+
+/* 内层表格深度定制 */
+::v-deep .inner-table {
+  .el-table {
+    border: none !important;
+  }
+
+}
+
+.menuDiv {
+  display: none;
+  position: fixed;
+  /* 改为fixed定位，不受父元素影响 */
+  background: white;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  min-width: 60px;
+  z-index: 9999;
+  border-radius: 4px;
+
+}
+
+.menuUl {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.menuUl li {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.menuUl li:hover {
+  background-color: #f5f5f5;
+}
+
+.level-href {
+  color: #1890ff !important;
+}
+
+.input-container {
+  width: 100%;
+  display: flex;
+  justify-content: end;
+  align-items: center;
+  // margin: 0 20 10 0;
+}
+
+::v-deep .input-width {
+  width: 60px;
+}
+
+.header-cell {
+  padding: 6px;
+  flex: auto;
+  border: 1px solid #C0C0C0;
+  border-bottom: none;
+  background: #B5CA6F !important;
+}
+
+::v-deep .el-table_10_column_104 is-center is-leaf .el-table__cell .cell {
+  padding: 0;
+}
+
+::v-deep .el-table td.el-table__cell div {
+  padding: 0;
+  line-height: 5;
+}
+
+::v-deep .el-table__body-wrapper .el-table__body {
+  width: 100% !important;
+}
+
+::v-deep .el-table th.el-table__cell .cell {
+  padding: 0;
+}
+
+.list-group {
+  list-style: none;
+  line-height: 15px;
+}
+
+/* 确保表格单元格高度撑开 */
+.el-table__body-wrapper .el-table__body td {
+  padding: 0 !important;
+}
+
+.full-height-container {
+  height: 100%;
+}
+
+.full-height {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.full-height-item {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #C0C0C0;
+  /* 垂直居中 */
+}
+.full-height-item:last-child {
+  border-bottom: none;
+}
+
+.full-height-link {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 2px;
+  /* 根据需要调整内边距 */
+  box-sizing: border-box;
+  text-decoration: none;
+  color: inherit;
+}
+
+.full-height-link:hover {
+  background-color: #f5f7fa;
+  /* 悬停效果，可选 */
+}
+
+</style>
